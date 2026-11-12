@@ -67,6 +67,10 @@ Register-ScheduledTask -TaskName 'playlist-sync' -Action $action -Trigger $trigg
 | `.state/quota.json` | no | units spent today (Pacific) |
 | `.state/review.md` | no | the latest review list |
 
+## Privacy
+
+playlist-sync runs on your own machine and has no server. It reads the Spotify playlists you list and edits the matching YouTube playlists on your account. Nothing is sent anywhere else. OAuth refresh tokens are kept in your operating system's credential store, and match results stay in the local `.state/` folder. Revoke access at any time from your [Google account permissions](https://myaccount.google.com/permissions) and [Spotify apps](https://www.spotify.com/account/apps/) pages.
+
 ## License
 
 MIT
