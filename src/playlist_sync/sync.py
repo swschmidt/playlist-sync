@@ -10,9 +10,10 @@ from . import diff, matcher
 from .config import Config, PlaylistConfig
 from .quota import QuotaExhausted
 from .spotify import SpotifyClient, Track
-from .youtube import YouTubeClient, YouTubeError
+from .youtube import Video, YouTubeClient, YouTubeError
 
 RETRY_AFTER = timedelta(days=14)  # how long a failed or low-confidence match waits before another search
+ADOPT_TITLE_HIT = 0.8             # an existing playlist video is kept when its title names the track this well
 
 
 class JsonStore:
@@ -31,8 +32,9 @@ class MatchCache(JsonStore):
     def get(self, track_id: str) -> dict | None:
         return self.data.get(track_id)
 
-    def put(self, track_id: str, match: matcher.Match, today: date) -> None:
-        status = "matched" if match.confidence in ("high", "medium") else ("low" if match.video_id else "unmatched")
+    def put(self, track_id: str, match: matcher.Match, today: date, status: str | None = None) -> None:
+        if status is None:
+            status = "matched" if match.confidence in ("high", "medium") else ("low" if match.video_id else "unmatched")
         self.data[track_id] = {"status": status, "video_id": match.video_id, "confidence": match.confidence,
                                "tier": match.tier, "title": match.title, "channel": match.channel,
                                "checked": today.isoformat()}
@@ -50,6 +52,7 @@ class Report:
     name: str
     tracks: int = 0
     matched: int = 0
+    adopted: int = 0
     searched: int = 0
     youtube_id: str | None = None
     ops: list[str] = field(default_factory=list)
@@ -73,6 +76,16 @@ def _describe(op: diff.Op, labels: dict[str, str]) -> str:
     return f"{op.kind} {what} at {op.position + 1}"
 
 
+def adopt(track: Track, videos: list[Video], trusted: tuple[str, ...]) -> matcher.Match | None:
+    """The video already in the YouTube playlist that is this track, if any.
+
+    Looser than a search match on purpose: a live cut or lyric video someone put
+    there by hand is still that song, and keeping it costs no quota.
+    """
+    scored = [m for v in videos if (m := matcher.score(track, v, trusted)) and m.title_hit >= ADOPT_TITLE_HIT]
+    return max(scored, key=lambda m: m.score) if scored else None
+
+
 def sync_playlist(pc: PlaylistConfig, cfg: Config, sp: SpotifyClient, yt: YouTubeClient,
                   cache: MatchCache, state: JsonStore, dry_run: bool, today: date | None = None) -> Report:
     today = today or date.today()
@@ -82,15 +95,24 @@ def sync_playlist(pc: PlaylistConfig, cfg: Config, sp: SpotifyClient, yt: YouTub
     by_id = {t.id: t for t in tracks}
     chosen: dict[str, str] = {}
 
-    # Pinned and cached picks: one cheap videos.list check that they still play.
-    pinned = {tid: cfg.overrides[tid] for tid in by_id if tid in cfg.overrides}
-    cached = {tid: e["video_id"] for tid in by_id
-              if tid not in pinned and (e := cache.get(tid)) and e["status"] == "matched"}
     try:
-        info = yt.videos(list(pinned.values()) + list(cached.values()))
+        playlist_id = pc.youtube_id or state.data.get("playlists", {}).get(pc.spotify_id)
+        if playlist_id and not yt.playlist_exists(playlist_id):
+            if pc.youtube_id:
+                rep.errors.append(f"configured YouTube playlist {pc.youtube_id} not found")
+                return rep
+            playlist_id = None
+        current = [(i.item_id, i.video_id) for i in yt.playlist_items(playlist_id)] if playlist_id else []
+
+        # Pinned picks, cached picks and what's already in the playlist: one cheap videos.list check.
+        pinned = {tid: cfg.overrides[tid] for tid in by_id if tid in cfg.overrides}
+        cached = {tid: e["video_id"] for tid in by_id
+                  if tid not in pinned and (e := cache.get(tid)) and e["status"] == "matched"}
+        info = yt.videos(list(pinned.values()) + list(cached.values()) + [vid for _, vid in current])
     except QuotaExhausted:
-        rep.stopped = "quota (checking videos)"
+        rep.stopped = "quota (reading YouTube)"
         return rep
+
     for tid, vid in pinned.items():
         if (v := info.get(vid)) and v.available:
             chosen[tid] = vid
@@ -101,6 +123,17 @@ def sync_playlist(pc: PlaylistConfig, cfg: Config, sp: SpotifyClient, yt: YouTub
             chosen[tid] = vid
         else:
             cache.drop(tid)  # deleted, made private or region-blocked: search again
+
+    # Keep videos already in the playlist that are one of the Spotify tracks.
+    unclaimed = {vid: info[vid] for _, vid in current if vid in info and vid not in chosen.values()}
+    for tid, track in by_id.items():
+        if tid in chosen or tid in pinned or not unclaimed:
+            continue
+        if match := adopt(track, list(unclaimed.values()), cfg.trusted_channels):
+            chosen[tid] = match.video_id
+            cache.put(tid, match, today, status="matched")
+            unclaimed.pop(match.video_id)
+            rep.adopted += 1
 
     # Everything else gets a search, budget permitting.
     for tid, track in by_id.items():
@@ -126,25 +159,19 @@ def sync_playlist(pc: PlaylistConfig, cfg: Config, sp: SpotifyClient, yt: YouTub
 
     desired = [chosen[t.id] for t in tracks if t.id in chosen]
     rep.matched = len(desired)
-    labels = {chosen[t.id]: t.label for t in tracks if t.id in chosen}
+    labels = {vid: f"\"{v.title}\" ({v.channel_title})" for vid, v in info.items()}
+    labels.update({chosen[t.id]: t.label for t in tracks if t.id in chosen})
     if rep.stopped:
         # A partial match list would delete or misplace items; finish matching on a later run first.
         return rep
 
     try:
-        playlist_id = pc.youtube_id or state.data.get("playlists", {}).get(pc.spotify_id)
-        if playlist_id and not yt.playlist_exists(playlist_id):
-            if pc.youtube_id:
-                rep.errors.append(f"configured YouTube playlist {pc.youtube_id} not found")
-                return rep
-            playlist_id = None
         if not playlist_id and not dry_run:
             playlist_id = yt.create_playlist(pc.name, pc.privacy, "Synced from Spotify by playlist-sync.")
             state.data.setdefault("playlists", {})[pc.spotify_id] = playlist_id
             state.save()
         rep.youtube_id = playlist_id or "(created on the first real run)"
 
-        current = [(i.item_id, i.video_id) for i in yt.playlist_items(playlist_id)] if playlist_id else []
         ops = diff.plan(current, desired)
         rep.ops = [_describe(op, labels) for op in ops]
         if dry_run:

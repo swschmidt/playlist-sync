@@ -132,6 +132,19 @@ class YouTubeClient:
                 out[v["id"]] = video_from_api(v, self.region)
         return out
 
+    def my_playlists(self) -> list[dict]:
+        out, token = [], None
+        while True:
+            params = {"part": "snippet,contentDetails,status", "mine": "true", "maxResults": 50}
+            if token:
+                params["pageToken"] = token
+            data = self._call("GET", "playlists", "playlists.list", params)
+            out += [{"id": p["id"], "name": p["snippet"]["title"], "total": p["contentDetails"]["itemCount"],
+                     "privacy": p["status"]["privacyStatus"]} for p in data.get("items", [])]
+            token = data.get("nextPageToken")
+            if not token:
+                return out
+
     def playlist_exists(self, playlist_id: str) -> bool:
         data = self._call("GET", "playlists", "playlists.list", {"part": "id", "id": playlist_id})
         return bool(data.get("items"))

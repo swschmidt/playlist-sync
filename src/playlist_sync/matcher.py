@@ -37,6 +37,7 @@ class Match:
     score: float = 0.0
     title: str = ""
     channel: str = ""
+    title_hit: float = 0.0
 
 
 def norm(text: str) -> str:
@@ -123,7 +124,7 @@ def score(track: Track, video: Video, trusted: tuple[str, ...] = ()) -> Match | 
         confidence = "medium"
     else:
         confidence = "low"
-    return Match(video.id, confidence, tier, round(points, 2), video.title, video.channel_title)
+    return Match(video.id, confidence, tier, round(points, 2), video.title, video.channel_title, round(hit, 2))
 
 
 def best(track: Track, candidates: list[Video], trusted: tuple[str, ...] = ()) -> Match:

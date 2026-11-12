@@ -27,7 +27,8 @@ class _Tee:
 
 def _print_report(rep: Report, dry_run: bool) -> None:
     print(f"\n== {rep.name} ==")
-    print(f"tracks {rep.tracks}, matched {rep.matched}, new searches {rep.searched}, youtube {rep.youtube_id or '-'}")
+    print(f"tracks {rep.tracks}, matched {rep.matched} (kept from YouTube {rep.adopted}, new searches "
+          f"{rep.searched}), youtube {rep.youtube_id or '-'}")
     if rep.ops:
         verb = "would apply" if dry_run else f"applied {rep.done} of"
         print(f"{verb} {len(rep.ops)} change(s):")
@@ -69,6 +70,15 @@ def cmd_playlists(args) -> int:
     sp = spotify.SpotifyClient(config.env("PLAYLIST_SYNC_SPOTIFY_CLIENT_ID"))
     for p in sp.my_playlists():
         print(f"{p['id']}  {p['total'] if p['total'] is not None else '?':>5}  {p['name']}  ({p['owner']})")
+    return 0
+
+
+def cmd_youtube_playlists(args) -> int:
+    cfg = config.load()
+    quota = Quota(cfg.state_dir / "quota.json", cfg.daily_budget)
+    yt = youtube.YouTubeClient(youtube.credentials(cfg.google_client_file), quota, cfg.region)
+    for p in yt.my_playlists():
+        print(f"{p['id']}  {p['total']:>5}  {p['name']}  ({p['privacy']})")
     return 0
 
 
@@ -137,6 +147,7 @@ def main(argv: list[str] | None = None) -> int:
     auth = sub.add_parser("auth", help="sign in and store a refresh token")
     auth.add_argument("service", choices=["spotify", "youtube"])
     sub.add_parser("playlists", help="list your Spotify playlists with their IDs")
+    sub.add_parser("youtube-playlists", help="list your YouTube playlists with their IDs")
     run = sub.add_parser("run", help="sync the playlists in config.toml")
     run.add_argument("--dry-run", action="store_true", help="match and plan, but write nothing to YouTube")
     run.add_argument("--only", metavar="NAME", help="sync one playlist by its config name")
@@ -145,8 +156,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("review", help="tracks that need a manual pick")
     args = parser.parse_args(argv)
 
-    handlers = {"auth": cmd_auth, "playlists": cmd_playlists, "run": cmd_run, "status": cmd_status,
-                "review": cmd_review}
+    handlers = {"auth": cmd_auth, "playlists": cmd_playlists, "youtube-playlists": cmd_youtube_playlists,
+                "run": cmd_run, "status": cmd_status, "review": cmd_review}
     try:
         return handlers[args.cmd](args)
     except (ConfigError, spotify.SpotifyError, youtube.YouTubeError) as e:
