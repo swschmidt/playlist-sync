@@ -1,0 +1,10 @@
+# Personal configuration and runtime state never leave the machine.
+config.toml
+.state/
+client_secret*.json
+
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+dist/
