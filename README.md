@@ -1,19 +1,32 @@
 # playlist-sync
 
-One-way sync from Spotify playlists to YouTube playlists that picks **music videos**, not just audio.
+Two-way sync between Spotify playlists and YouTube playlists that picks **music videos**, not just audio.
 
-Spotify is the source of truth. For each playlist you list, every track is matched to the best YouTube video once, and the YouTube playlist is then made to match Spotify's tracks and order exactly. Anything edited by hand on YouTube is overwritten on the next run. Change a pick by pinning it in `config.toml` instead.
+Spotify sets the order. For each playlist you list:
+
+- every Spotify track is matched to the best YouTube video, and the YouTube playlist follows Spotify's order;
+- a song added on YouTube that Spotify doesn't have is found with Spotify search and added to Spotify after its YouTube neighbour. If search can't find it, it stays on YouTube and is listed by `playlist-sync review`;
+- a song removed on either side is removed from the other on the next run. Removals are detected against the pairs recorded at the end of the last complete run, so nothing is removed on a first run;
+- duplicates on YouTube are deleted: a second copy of a video, another upload of a song already there, or a karaoke or cover copy of it. A song Spotify lists twice under different track IDs gets one YouTube copy.
+
+Set `two_way = false` on a playlist for one-way Spotify → YouTube, where anything edited by hand on YouTube is overwritten. Change a pick by pinning it in `config.toml`.
 
 ## How a video is picked
 
-One search per new track; candidates are ranked:
+Official uploads only (the artist's channel, VEVO, a record label or a trusted channel), ranked by class:
 
-1. official music video (artist, VEVO or label channel)
-2. official live or TV performance (e.g. *The Midnight Special*, *Top of the Pops*)
-3. official audio (Topic channel or "Provided to YouTube" art tracks)
-4. an unofficial upload, only when nothing official matches
+| Class | |
+|---|---|
+| 5 | official music video |
+| 4 | official alternate video (dance, fan or alternate cut) |
+| 3 | official lyric video or visualizer |
+| 2 | official live, session or TV performance (e.g. *The Midnight Special*) |
+| 1 | official audio (Topic channel or "Provided to YouTube" art track) |
+| 0 | an unofficial upload, only when nothing official matches |
 
-Lyric videos, covers, karaoke, remixes, lessons and wrong lengths are penalized. Low-confidence picks are **not** added; they're listed by `playlist-sync review` so you can pin one. Pins under `[overrides]` always win.
+Remixes, covers, karaoke, sped-up and other different recordings are rejected unless the Spotify track is that recording.
+
+**Nothing is downgraded.** A video already in the YouTube playlist is kept unless a strictly higher class is found; spare daily quota goes to searching for upgrades, lowest class first. Low-confidence picks are **not** added; they're listed by `playlist-sync review` so you can pin one. Pins under `[overrides]` always win.
 
 ## Limits you inherit
 
@@ -24,7 +37,7 @@ Lyric videos, covers, karaoke, remixes, lessons and wrong lengths are penalized.
 
 Requires [uv](https://docs.astral.sh/uv/).
 
-1. **Spotify app.** In the [Spotify developer dashboard](https://developer.spotify.com/dashboard), create an app using the Web API with redirect URI `http://127.0.0.1:8888/callback`. Set `PLAYLIST_SYNC_SPOTIFY_CLIENT_ID` in the environment or `~/.env.local`. No client secret is needed (PKCE).
+1. **Spotify app.** In the [Spotify developer dashboard](https://developer.spotify.com/dashboard), create an app using the Web API with redirect URI `http://127.0.0.1:8888/callback`. Set `PLAYLIST_SYNC_SPOTIFY_CLIENT_ID` in the environment or `~/.env.local`. No client secret is needed (PKCE). Sign-in asks to read and modify your playlists; nothing else.
 2. **Google OAuth client.** In Google Cloud:
    - create a project and enable **YouTube Data API v3**;
    - configure the OAuth consent screen (External), add the `.../auth/youtube` scope, and **publish it to "In production"**. In "Testing", refresh tokens expire after 7 days and scheduled runs stop. Google shows an "unverified app" warning at sign-in; that's expected for a personal app;
@@ -39,7 +52,7 @@ Requires [uv](https://docs.astral.sh/uv/).
 ## Use
 
 ```
-uv run playlist-sync run --dry-run   # match and show the planned changes; writes nothing to YouTube
+uv run playlist-sync run --dry-run   # match and show the planned changes; writes nothing to Spotify or YouTube
 uv run playlist-sync run             # sync
 uv run playlist-sync review          # tracks that need a manual pick
 uv run playlist-sync status          # quota used today, cache, playlist mapping
@@ -54,7 +67,7 @@ $repo = (Get-Location).Path
 $uv = (Get-Command uv).Source
 $action = New-ScheduledTaskAction -Execute $uv -Argument 'run playlist-sync run --log' -WorkingDirectory $repo
 $trigger = New-ScheduledTaskTrigger -Daily -At 4am
-Register-ScheduledTask -TaskName 'playlist-sync' -Action $action -Trigger $trigger -Description 'Spotify to YouTube playlist sync'
+Register-ScheduledTask -TaskName 'playlist-sync' -Action $action -Trigger $trigger -Description 'Spotify and YouTube playlist sync'
 ```
 
 ## Files
@@ -63,13 +76,13 @@ Register-ScheduledTask -TaskName 'playlist-sync' -Action $action -Trigger $trigg
 |---|---|---|
 | `config.toml` | no | playlists, pins, trusted channels |
 | `.state/matches.json` | no | cached track → video matches |
-| `.state/state.json` | no | Spotify → YouTube playlist IDs created by the tool |
+| `.state/state.json` | no | playlists created by the tool; track → video pairs from the last complete run |
 | `.state/quota.json` | no | units spent today (Pacific) |
 | `.state/review.md` | no | the latest review list |
 
 ## Privacy
 
-playlist-sync runs on your own machine and has no server. It reads the Spotify playlists you list and edits the matching YouTube playlists on your account. Nothing is sent anywhere else. OAuth refresh tokens are kept in your operating system's credential store, and match results stay in the local `.state/` folder. Revoke access at any time from your [Google account permissions](https://myaccount.google.com/permissions) and [Spotify apps](https://www.spotify.com/account/apps/) pages.
+playlist-sync runs on your own machine and has no server. It reads and edits the Spotify playlists you list and the matching YouTube playlists on your account. Nothing is sent anywhere else. OAuth refresh tokens are kept in your operating system's credential store, and match results stay in the local `.state/` folder. Revoke access at any time from your [Google account permissions](https://myaccount.google.com/permissions) and [Spotify apps](https://www.spotify.com/account/apps/) pages.
 
 ## License
 

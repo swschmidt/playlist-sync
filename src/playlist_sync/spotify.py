@@ -1,4 +1,4 @@
-"""Spotify Web API: PKCE sign-in and reads of playlists you own.
+"""Spotify Web API: PKCE sign-in, reads and edits of playlists you own.
 
 Development-mode apps (February 2026 rules) need a Premium owner and can only
 read the items of playlists the signed-in user owns or collaborates on.
@@ -22,7 +22,7 @@ AUTH_URL = "https://accounts.spotify.com/authorize"
 TOKEN_URL = "https://accounts.spotify.com/api/token"
 API = "https://api.spotify.com/v1"
 REDIRECT_URI = "http://127.0.0.1:8888/callback"
-SCOPES = "playlist-read-private playlist-read-collaborative"
+SCOPES = "playlist-read-private playlist-read-collaborative playlist-modify-private playlist-modify-public"
 TOKEN_NAME = "spotify_refresh_token"
 
 
@@ -44,7 +44,10 @@ class Track:
 
 def parse_entry(entry: dict) -> Track | None:
     """One playlist entry to a Track. Reads the 2026 `item` key, falling back to `track`."""
-    obj = entry.get("item") or entry.get("track")
+    return parse_track(entry.get("item") or entry.get("track"))
+
+
+def parse_track(obj: dict | None) -> Track | None:
     if not obj or obj.get("type", "track") != "track" or obj.get("is_local") or not obj.get("id"):
         return None
     artists = tuple(a["name"] for a in obj.get("artists", []))
@@ -158,18 +161,21 @@ class SpotifyClient:
         return self._access
 
     def get(self, path_or_url: str, params: dict | None = None) -> dict:
+        return self._call("GET", path_or_url, params=params)
+
+    def _call(self, method: str, path_or_url: str, params: dict | None = None, body: dict | None = None) -> dict:
         url = path_or_url if path_or_url.startswith("http") else API + path_or_url
         for _ in range(5):
-            r = self.session.get(url, params=params, timeout=30,
-                                 headers={"Authorization": f"Bearer {self._token()}"})
+            r = self.session.request(method, url, params=params, json=body, timeout=30,
+                                     headers={"Authorization": f"Bearer {self._token()}"})
             if r.status_code == 429:
                 if _reason(r) == "QUOTA_EXCEEDED":
                     raise SpotifyError("Spotify developer quota exceeded")
                 time.sleep(min(int(r.headers.get("Retry-After", "5")), 60))
                 continue
             if not r.ok:
-                raise SpotifyError(f"GET {url}: {r.status_code} {r.text[:300]}")
-            return r.json()
+                raise SpotifyError(f"{method} {url}: {r.status_code} {r.text[:300]}")
+            return r.json() if r.content else {}
         raise SpotifyError(f"still rate limited after retries: {url}")
 
     def _pages(self, path: str, params: dict):
@@ -192,3 +198,25 @@ class SpotifyClient:
             if track:
                 tracks.append(track)
         return tracks
+
+    def search_tracks(self, query: str, market: str = "US", limit: int = 10) -> list[Track]:
+        """Track search. Development-mode apps get at most 10 results.
+
+        An explicit market: `from_token` needs the user-read-private scope, which this tool doesn't ask for.
+        """
+        body = self.get("/search", {"q": query, "type": "track", "limit": limit, "market": market})
+        return [t for obj in (body.get("tracks") or {}).get("items", []) if (t := parse_track(obj))]
+
+    def add_track(self, playlist_id: str, track_id: str, position: int) -> None:
+        self._call("POST", f"/playlists/{playlist_id}/items",
+                   body={"uris": [f"spotify:track:{track_id}"], "position": position})
+
+    def remove_track(self, playlist_id: str, track_id: str) -> None:
+        """Removes every occurrence of the track from the playlist."""
+        uri = f"spotify:track:{track_id}"
+        try:
+            self._call("DELETE", f"/playlists/{playlist_id}/items", body={"items": [{"uri": uri}]})
+        except SpotifyError as e:
+            if " 400 " not in str(e):
+                raise
+            self._call("DELETE", f"/playlists/{playlist_id}/items", body={"tracks": [{"uri": uri}]})

@@ -27,14 +27,18 @@ class _Tee:
 
 def _print_report(rep: Report, dry_run: bool) -> None:
     print(f"\n== {rep.name} ==")
-    print(f"tracks {rep.tracks}, matched {rep.matched} (kept from YouTube {rep.adopted}, new searches "
-          f"{rep.searched}), youtube {rep.youtube_id or '-'}")
+    print(f"tracks {rep.tracks}, matched {rep.matched} (kept from YouTube {rep.adopted}, searches "
+          f"{rep.searched}, upgrades {rep.upgraded}), youtube {rep.youtube_id or '-'}")
+    if rep.spotify_ops:
+        print(f"Spotify: {'would apply' if dry_run else 'applied'} {len(rep.spotify_ops)} change(s):")
+        for line in rep.spotify_ops:
+            print(f"  {line}")
     if rep.ops:
         verb = "would apply" if dry_run else f"applied {rep.done} of"
         print(f"{verb} {len(rep.ops)} change(s):")
         for line in rep.ops:
             print(f"  {line}")
-    elif not rep.stopped and not rep.errors:
+    elif not rep.spotify_ops and not rep.stopped and not rep.errors:
         print("in sync")
     if rep.stopped:
         print(f"stopped: {rep.stopped}; the next run continues")

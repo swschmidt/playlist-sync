@@ -19,6 +19,7 @@ class PlaylistConfig:
     spotify_id: str
     youtube_id: str | None = None
     privacy: str = "private"
+    two_way: bool = True  # songs added on YouTube go to Spotify; removals on either side carry over
 
 
 @dataclass(frozen=True)
@@ -80,7 +81,8 @@ def load(home: Path | None = None) -> Config:
         if privacy not in PRIVACY:
             raise ConfigError(f"playlist {entry.get('name')!r}: privacy must be one of {PRIVACY}")
         try:
-            playlists.append(PlaylistConfig(entry["name"], entry["spotify_id"], entry.get("youtube_id"), privacy))
+            playlists.append(PlaylistConfig(entry["name"], entry["spotify_id"], entry.get("youtube_id"), privacy,
+                                            bool(entry.get("two_way", True))))
         except KeyError as missing:
             raise ConfigError(f"playlist entry is missing {missing}") from None
 

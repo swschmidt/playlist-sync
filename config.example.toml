@@ -3,7 +3,8 @@
 region = "US"          # videos blocked in this region are treated as unavailable
 daily_budget = 9000    # YouTube Data API units per day; the default project quota is 10,000
 
-# Channels treated as official for any artist: labels and TV-archive channels.
+# Channels treated as official for any artist: labels and TV-archive channels. Channels ending in
+# Records, Recordings, Music Group, Entertainment or Nashville already count when the title says "official".
 trusted_channels = ["The Midnight Special", "RHINO", "LegacyRecordingsVEVO", "Official Sweet Channel"]
 
 [[playlist]]
@@ -11,6 +12,7 @@ name = "Example"
 spotify_id = "SPOTIFY_PLAYLIST_ID"   # `playlist-sync playlists` lists yours
 # youtube_id = "PL..."               # optional: adopt an existing YouTube playlist
 privacy = "private"                  # for playlists the tool creates: public | unlisted | private
+# two_way = false                    # default true: songs added or removed on YouTube carry back to Spotify
 
 [overrides]
 # Spotify track ID = YouTube video ID. A pinned pick always wins and is never re-matched.
