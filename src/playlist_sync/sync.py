@@ -180,7 +180,8 @@ def merge(tracks: list[Track], adds: dict[str, Track], keeps: set[str],
 
 
 def sync_playlist(pc: PlaylistConfig, cfg: Config, sp: SpotifyClient, yt: YouTubeClient,
-                  cache: MatchCache, state: JsonStore, dry_run: bool, today: date | None = None) -> Report:
+                  cache: MatchCache, state: JsonStore, dry_run: bool, today: date | None = None,
+                  upgrades: bool = True) -> Report:
     today = today or date.today()
     rep = Report(pc.name)
     trusted = cfg.trusted_channels
@@ -334,7 +335,7 @@ def sync_playlist(pc: PlaylistConfig, cfg: Config, sp: SpotifyClient, yt: YouTub
     upgradable = sorted((t for t in tracks if t.id in picks and picks[t.id].cls < 5
                          and (cache.get(t.id) or {}).get("rules", 1) < RULES),
                         key=lambda t: picks[t.id].cls)
-    for t in upgradable:
+    for t in upgradable if upgrades else ():
         if spare < SEARCH_COST + 2 * WRITE_COST:
             break
         try:

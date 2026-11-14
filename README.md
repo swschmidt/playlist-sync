@@ -62,13 +62,19 @@ Runs from the repo directory, or set `PLAYLIST_SYNC_HOME`. `run --log` also appe
 
 ### Daily schedule (Windows)
 
+A daily run carries on where the last one stopped: matches are cached, so a new playlist that needs more searches than one day's quota finishes over several days. YouTube's quota resets at midnight Pacific, so schedule just after it. The task runs as you while you're signed in, because the refresh tokens are in your credential store.
+
 ```powershell
 $repo = (Get-Location).Path
 $uv = (Get-Command uv).Source
 $action = New-ScheduledTaskAction -Execute $uv -Argument 'run playlist-sync run --log' -WorkingDirectory $repo
-$trigger = New-ScheduledTaskTrigger -Daily -At 4am
-Register-ScheduledTask -TaskName 'playlist-sync' -Action $action -Trigger $trigger -Description 'Spotify and YouTube playlist sync'
+$trigger = New-ScheduledTaskTrigger -Daily -At 3:30am   # Eastern; midnight Pacific + 30 min
+$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 2)
+Register-ScheduledTask -TaskName 'playlist-sync' -Action $action -Trigger $trigger -Settings $settings `
+  -Description 'Spotify and YouTube playlist sync'
 ```
+
+**Hold a new playlist** with `hold = true` until you've read its plan. Scheduled runs then only match and dry-run it, and print what they would change; live playlists run first so their daily writes aren't starved, and upgrade searches pause while anything is held. Set `hold = false` once the plan looks right.
 
 ## Files
 

@@ -103,16 +103,22 @@ def cmd_run(args) -> int:
         state = JsonStore(cfg.state_dir / "state.json")
 
         reports, failed = [], False
-        for pc in cfg.playlists:
-            if args.only and pc.name != args.only:
-                continue
+        chosen = [pc for pc in cfg.playlists if not args.only or pc.name == args.only]
+        # Live playlists first so their daily writes aren't starved; while any playlist is held,
+        # spare quota goes to its matching rather than to upgrade searches.
+        chosen.sort(key=lambda pc: pc.hold)
+        any_held = any(pc.hold for pc in chosen)
+        for pc in chosen:
+            dry = args.dry_run or pc.hold
             try:
-                rep = sync_playlist(pc, cfg, sp, yt, cache, state, args.dry_run)
+                rep = sync_playlist(pc, cfg, sp, yt, cache, state, dry, upgrades=not any_held)
             except (spotify.SpotifyError, youtube.YouTubeError) as e:
                 rep = Report(pc.name, errors=[str(e)])
             failed |= bool(rep.errors)
             reports.append(rep)
-            _print_report(rep, args.dry_run)
+            if pc.hold and not args.dry_run:
+                print(f"\n(held: {pc.name} is matched and planned only; set hold = false to sync it)")
+            _print_report(rep, dry)
 
         _write_review(cfg.state_dir / "review.md", reports)
         print(f"\nquota used today: {quota.used} of {quota.budget}")
