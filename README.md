@@ -26,7 +26,7 @@ Official uploads only (the artist's channel, VEVO, a record label or a trusted c
 
 Remixes, covers, karaoke, sped-up and other different recordings are rejected unless the Spotify track is that recording.
 
-**Nothing is downgraded.** A video already in the YouTube playlist is kept unless a strictly higher class is found; spare daily quota goes to searching for upgrades, lowest class first. Low-confidence picks are **not** added; they're listed by `playlist-sync review` so you can pin one. Pins under `[overrides]` always win.
+**Nothing is downgraded.** A video already in the YouTube playlist is kept unless a strictly higher class is found, and never replaced by a live or audio-only clip, since that changes the recording; spare daily quota goes to searching for upgrades, lowest class first. Low-confidence picks are **not** added; they're listed by `playlist-sync review` so you can pin one. Pins under `[overrides]` always win.
 
 ## Limits you inherit
 

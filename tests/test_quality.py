@@ -117,3 +117,13 @@ def test_karaoke_copies_of_playlist_songs_are_duplicates():
 def test_youtube_query_keeps_remix():
     assert youtube_query(v("r", "Florida Georgia Line - Cruise (Remix) ft. Nelly", "FlaGeorgiaLineVEVO")) \
         == "Florida Georgia Line Cruise remix"
+
+
+def test_band_videos_channel_and_label_bare_titles_are_official():
+    # Angry White Guys, 2026-11-16: both official videos scored 0 and were swapped for live clips.
+    assert cls(t("Outside", "Staind", 292), v("a", "Staind - Outside (Official Video)", "Staind Videos", 300)) == 5
+    assert cls(t("Self Esteem", "The Offspring", 257),
+               v("b", 'The Offspring - "Self Esteem"', "Epitaph Records", 260)) == 5
+    # The looser label suffixes still need "official" in the title.
+    assert cls(t("Self Esteem", "The Offspring", 257),
+               v("c", "The Offspring - Self Esteem", "Throwback Entertainment", 260)) == 0

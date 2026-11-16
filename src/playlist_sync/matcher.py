@@ -39,6 +39,9 @@ OTHER_RECORDING = ("remix", "cover", "covers", "karaoke", "reaction", "tutorial"
                    "chords", "backing track", "mashup", "tribute", "parody")
 # Not bare "music": fan lyric channels use it too (Vibe Music). Labels named that way go in trusted_channels.
 LABEL_SUFFIXES = ("records", "recordings", "music group", "musicgroup", "entertainment", "nashville")
+# Record labels proper post their catalogue under bare titles (Epitaph Records: The Offspring - "Self Esteem"),
+# so these need only the artist named; the looser suffixes above also need "official" in the title.
+RECORD_LABEL = ("records", "recordings")
 # Instrument-in-title noise (guitar lessons, drum covers): a penalty, since band names can contain them.
 JUNK = ("guitar", "drum", "drums", "bass", "piano")
 CLASS_TIER = {5: "video", 4: "video", 3: "lyric", 2: "live", 1: "audio", 0: "upload"}
@@ -91,7 +94,7 @@ def is_official(channel: str, artists: tuple[str, ...], trusted: tuple[str, ...]
         return True
     for form in artist_forms(artists):
         f = form.replace(" ", "")
-        if ch_ns in {f, f + "vevo", "the" + f + "vevo", "official" + f, f + "official", f + "topic"}:
+        if ch_ns in {f, f + "vevo", "the" + f + "vevo", "official" + f, f + "official", f + "topic", f + "videos"}:
             return True
         # "Official Sweet Channel", "Deep Purple Official": only for names long enough not to collide.
         if len(f) >= 5 and f in ch_ns and ("official" in ch_ns or "vevo" in ch_ns or ch.endswith(" topic")):
@@ -135,9 +138,10 @@ def score(track: Track, video: Video, trusted: tuple[str, ...] = ()) -> Match | 
     # Record-label channels (Atlantic Records, Curb Records, NettwerkMusic) post the official video
     # under the label's name: count one that names the artist and calls itself official.
     ch = norm(video.channel_title)
-    label = has(vt, "official") and (ch.endswith(LABEL_SUFFIXES) or ch.replace(" ", "").endswith(LABEL_SUFFIXES))
+    ch_ns = ch.replace(" ", "")
+    label = ch_ns.endswith(RECORD_LABEL) or (has(vt, "official") and ch_ns.endswith(LABEL_SUFFIXES))
     official = is_official(video.channel_title, track.artists, trusted) or (
-        named and (ch.replace(" ", "").endswith("vevo") or label))
+        named and (ch_ns.endswith("vevo") or label))
     if hit < 0.6 or not (official or named):
         return None
     if any(has(vt, o) != has(tt, o) for o in OTHER_RECORDING if has(vt, o) or o == "remix"):

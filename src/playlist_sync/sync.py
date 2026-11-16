@@ -20,6 +20,7 @@ from .youtube import Video, YouTubeClient, YouTubeError
 
 RETRY_AFTER = timedelta(days=14)  # how long a failed or low-confidence match waits before another search
 ADOPT_TITLE_HIT = 0.8             # an existing playlist video is kept when its title names the track this well
+MIN_UPGRADE = 3                   # lyric video or better
 RULES = 2                         # cache entries searched under the quality-class rules
 SEARCH_COST = 101                 # search.list + videos.list
 WRITE_COST = 50
@@ -345,7 +346,9 @@ def sync_playlist(pc: PlaylistConfig, cfg: Config, sp: SpotifyClient, yt: YouTub
         spare -= SEARCH_COST
         rep.searched += 1
         cache.put(t.id, match, today)
-        if match.video_id and match.confidence != "low" and match.cls > picks[t.id].cls:
+        # Never swap in a live or audio-only clip: that changes the recording, so it isn't an upgrade
+        # even over an unofficial upload of the studio video.
+        if match.video_id and match.confidence != "low" and match.cls > picks[t.id].cls and match.cls >= MIN_UPGRADE:
             info[match.video_id] = Video(match.video_id, match.title, match.channel)
             chosen[t.id], picks[t.id] = match.video_id, match
             rep.upgraded += 1
@@ -358,7 +361,7 @@ def sync_playlist(pc: PlaylistConfig, cfg: Config, sp: SpotifyClient, yt: YouTub
         if kind == "add":
             rep.spotify_ops.append(f"add {x.label} at {pos + 1} (on YouTube)")
     want = desired()
-    rep.matched = sum(1 for k, x in spotify_order if k == "add" or x.id in chosen)
+    rep.matched = sum(1 for k, x in spotify_order if k == "track" and x.id in chosen)
     labels = {vid: f"\"{v.title}\" ({v.channel_title})" for vid, v in info.items()}
     labels.update({chosen[t.id]: t.label for t in tracks if t.id in chosen})
     labels.update({vid: t.label for vid, t in adds.items()})
