@@ -74,7 +74,7 @@ Register-ScheduledTask -TaskName 'playlist-sync' -Action $action -Trigger $trigg
   -Description 'Spotify and YouTube playlist sync'
 ```
 
-**Hold a new playlist** with `hold = true` until you've read its plan. Scheduled runs then only match and dry-run it, and print what they would change; live playlists run first so their daily writes aren't starved, and upgrade searches pause while anything is held. Set `hold = false` once the plan looks right.
+**Hold a new playlist** with `hold = true` until you've read its plan. Scheduled runs then only match and dry-run it, and print what they would change; live playlists run first so their daily writes aren't starved, and upgrade searches pause while anything is held or hasn't finished its first sync. Set `hold = false` once the plan looks right.
 
 ## Files
 

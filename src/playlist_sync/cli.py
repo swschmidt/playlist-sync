@@ -104,10 +104,12 @@ def cmd_run(args) -> int:
 
         reports, failed = [], False
         chosen = [pc for pc in cfg.playlists if not args.only or pc.name == args.only]
-        # Live playlists first so their daily writes aren't starved; while any playlist is held,
-        # spare quota goes to its matching rather than to upgrade searches.
+        # Live playlists first so their daily writes aren't starved; while any playlist is held or
+        # hasn't finished its first sync, spare quota goes to its matching rather than to upgrade
+        # searches on the others (which run first and would otherwise spend the whole day's budget).
         chosen.sort(key=lambda pc: pc.hold)
-        any_held = any(pc.hold for pc in chosen)
+        synced = state.data.get("synced", {})
+        any_held = any(pc.hold or not synced.get(pc.spotify_id, {}).get("complete") for pc in chosen)
         for pc in chosen:
             dry = args.dry_run or pc.hold
             try:
@@ -152,6 +154,10 @@ def cmd_review(args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Windows consoles default to cp1252, which can't print emoji playlist names or en dashes.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(prog="playlist-sync", description="One-way Spotify to YouTube playlist sync.")
     sub = parser.add_subparsers(dest="cmd", required=True)
     auth = sub.add_parser("auth", help="sign in and store a refresh token")
