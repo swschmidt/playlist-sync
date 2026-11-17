@@ -127,3 +127,34 @@ def test_band_videos_channel_and_label_bare_titles_are_official():
     # The looser label suffixes still need "official" in the title.
     assert cls(t("Self Esteem", "The Offspring", 257),
                v("c", "The Offspring - Self Esteem", "Throwback Entertainment", 260)) == 0
+
+
+def test_search_falls_back_to_the_artist_when_youtube_returns_nothing():
+    from playlist_sync.sync import _search
+
+    class FakeYT:
+        def __init__(self):
+            self.queries = []
+
+        def search(self, query, results=10):
+            self.queries.append(query)
+            return [] if "Sex" in query else ["a"]
+
+        def videos(self, ids):
+            return {i: v(i, "Color Me Badd - I Wanna Sex You Up (Official Music Video)", "Warner Records", 245)
+                    for i in ids}
+
+    yt = FakeYT()
+    m = _search(yt, t("I Wanna Sex You Up - Single Mix", "Color Me Badd", 245), ())
+    assert yt.queries == ["Color Me Badd I Wanna Sex You Up", "Color Me Badd"]
+    assert m.video_id == "a" and m.cls == 5
+
+
+def test_featured_credits_dont_count_against_title_coverage():
+    # Boom, 2026-11-17: these YouTube videos never found their Spotify tracks.
+    from playlist_sync.sync import _segments
+    loyal = _segments("Chris Brown - Loyal (Official Video) ft. Lil Wayne, Tyga", ("Chris Brown", "Lil Wayne", "Tyga"))
+    assert {"loyal"} in loyal
+    where = _segments('Skrillex and Diplo - "Where Are Ü Now" with Justin Bieber (Official Video)',
+                      ("Jack Ü", "Skrillex", "Diplo", "Justin Bieber"))
+    assert {"where", "are", "now", "with"} in where

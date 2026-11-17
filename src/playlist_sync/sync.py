@@ -97,10 +97,19 @@ def adopt(track: Track, videos: list[Video], trusted: tuple[str, ...]) -> matche
     return max(scored, key=matcher.rank) if scored else None
 
 
-def _segments(title: str) -> list[set[str]]:
+def _segments(title: str, artists: tuple[str, ...] = ()) -> list[set[str]]:
+    """The title's dash-separated parts as word sets, without bracketed text, a trailing
+    "ft. ..." credit or any of `artists`' words (Loyal ... ft. Lil Wayne, Tyga; Where Are Ü Now
+    with Justin Bieber), so featured credits don't count as extra title words."""
     title = re.sub(r"[\(\[][^\)\]]*[\)\]]", " ", title)
-    parts = re.split(r"\s[-–|:]\s|\|", title)
-    return [set(matcher.norm(p).split()) for p in parts if matcher.norm(p)]
+    drop = {w for a in artists for w in matcher.norm(a).split()}
+    out = []
+    for part in re.split(r"\s[-–|:]\s|\|", title):
+        part = re.sub(r"(?i)\s(ft|feat|featuring)\.?\s.*$", " ", f" {part}")
+        words = set(matcher.norm(part).split()) - drop
+        if words:
+            out.append(words)
+    return out
 
 
 def youtube_query(video: Video) -> str:
@@ -141,7 +150,7 @@ def spotify_match(sp: SpotifyClient, video: Video, trusted: tuple[str, ...], mar
         if not m or m.title_hit < ADOPT_TITLE_HIT or m.confidence == "low":
             continue
         want = set(matcher.norm(matcher.core_title(track.title)).split())
-        coverage = max((len(seg & want) / len(seg) for seg in _segments(video.title)), default=0.0)
+        coverage = max((len(seg & want) / len(seg) for seg in _segments(video.title, track.artists)), default=0.0)
         if coverage < 0.6:
             continue
         key = (coverage, matcher.rank(m))
@@ -152,6 +161,10 @@ def spotify_match(sp: SpotifyClient, video: Video, trusted: tuple[str, ...], mar
 
 def _search(yt: YouTubeClient, track: Track, trusted: tuple[str, ...]) -> matcher.Match:
     ids = yt.search(matcher.search_query(track))
+    if not ids and track.artists:
+        # YouTube's API returns nothing for some words in a query ("I Wanna Sex You Up"), whatever
+        # safeSearch says; the artist alone still finds the video, and the scorer checks the title.
+        ids = yt.search(track.artists[0], 25)
     return matcher.best(track, list(yt.videos(ids).values()), trusted)
 
 
