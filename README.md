@@ -57,6 +57,7 @@ uv run playlist-sync run             # tidy, then sync
 uv run playlist-sync tidy --dry-run  # show what the cleanup would remove
 uv run playlist-sync tidy --force    # apply a cleanup larger than max_remove
 uv run playlist-sync review          # tracks that need a manual pick
+uv run playlist-sync check           # what needs a person from today's run log (--date); silent when clean
 uv run playlist-sync status          # quota used today, cache, playlist mapping
 ```
 

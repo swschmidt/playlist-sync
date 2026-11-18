@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import AuthorizedSession
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -108,7 +109,11 @@ class YouTubeClient:
 
     def _call(self, method: str, resource: str, op: str, params: dict, body: dict | None = None) -> dict:
         self.quota.spend(op)
-        r = self.session.request(method, f"{API}/{resource}", params=params, json=body, timeout=30)
+        try:
+            r = self.session.request(method, f"{API}/{resource}", params=params, json=body, timeout=30)
+        except RefreshError as e:
+            # A Testing-mode Google app's refresh token lasts 7 days; a revoked one fails the same way.
+            raise YouTubeError(f"YouTube sign-in expired or revoked ({e}); run `playlist-sync auth youtube`") from None
         if r.status_code == 403 and _reason(r) in QUOTA_REASONS:
             self.quota.exhaust()
             raise QuotaExhausted("YouTube reports the daily quota is used up")

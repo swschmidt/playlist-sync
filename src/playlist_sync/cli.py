@@ -6,7 +6,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from . import config, spotify, tidy, youtube
+from . import check, config, spotify, tidy, youtube
 from .config import ConfigError
 from .quota import Quota
 from .sync import JsonStore, MatchCache, Report, sync_playlist
@@ -127,6 +127,9 @@ def cmd_run(args) -> int:
         _write_review(cfg.state_dir / "review.md", reports)
         print(f"\nquota used today: {quota.used} of {quota.budget}")
         return 1 if failed else 0
+    except (ConfigError, spotify.SpotifyError, youtube.YouTubeError) as e:
+        print(f"error: {e}")  # into the log too, where `check` reads it; main() exits 2
+        raise
     finally:
         if log:
             sys.stdout = sys.__stdout__
@@ -156,6 +159,15 @@ def cmd_tidy(args) -> int:
     sp = spotify.SpotifyClient(config.env("PLAYLIST_SYNC_SPOTIFY_CLIENT_ID"))
     print(f"playlist-sync tidy{' (dry run)' if args.dry_run else ''} {datetime.now():%Y-%m-%d %H:%M}")
     return 1 if _run_tidy(cfg, sp, args.dry_run, args.force) else 0
+
+
+def cmd_check(args) -> int:
+    """One line per thing a person needs to act on from that day's run; nothing when clean."""
+    day = args.date or f"{datetime.now():%Y-%m-%d}"
+    lines = check.check(config.load().state_dir, day)
+    for line in lines:
+        print(line)
+    return 1 if lines else 0
 
 
 def cmd_status(args) -> int:
@@ -198,12 +210,14 @@ def main(argv: list[str] | None = None) -> int:
     td = sub.add_parser("tidy", help="clean up the [[tidy]] playlists (run also does this first)")
     td.add_argument("--dry-run", action="store_true", help="show what would be removed")
     td.add_argument("--force", action="store_true", help="apply even past max_remove")
+    ck = sub.add_parser("check", help="what needs attention from a day's run log; prints nothing when clean")
+    ck.add_argument("--date", metavar="YYYY-MM-DD", help="log date (default today)")
     sub.add_parser("status", help="quota, cache and playlist mapping")
     sub.add_parser("review", help="tracks that need a manual pick")
     args = parser.parse_args(argv)
 
     handlers = {"auth": cmd_auth, "playlists": cmd_playlists, "youtube-playlists": cmd_youtube_playlists,
-                "run": cmd_run, "tidy": cmd_tidy, "status": cmd_status, "review": cmd_review}
+                "run": cmd_run, "tidy": cmd_tidy, "check": cmd_check, "status": cmd_status, "review": cmd_review}
     try:
         return handlers[args.cmd](args)
     except (ConfigError, spotify.SpotifyError, youtube.YouTubeError) as e:
