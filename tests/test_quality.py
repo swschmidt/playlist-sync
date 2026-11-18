@@ -158,3 +158,10 @@ def test_featured_credits_dont_count_against_title_coverage():
     where = _segments('Skrillex and Diplo - "Where Are Ü Now" with Justin Bieber (Official Video)',
                       ("Jack Ü", "Skrillex", "Diplo", "Justin Bieber"))
     assert {"where", "are", "now", "with"} in where
+
+
+def test_a_title_word_shared_with_an_artist_name_still_counts():
+    from playlist_sync.sync import _segments
+    segs = _segments('Skrillex and Diplo - "Where Are Ü Now" with Justin Bieber (Official Video)',
+                     ("Jack Ü", "Skrillex", "Diplo", "Justin Bieber"), {"where", "are", "u", "now"})
+    assert {"where", "are", "u", "now", "with"} in segs

@@ -97,12 +97,13 @@ def adopt(track: Track, videos: list[Video], trusted: tuple[str, ...]) -> matche
     return max(scored, key=matcher.rank) if scored else None
 
 
-def _segments(title: str, artists: tuple[str, ...] = ()) -> list[set[str]]:
+def _segments(title: str, artists: tuple[str, ...] = (), keep: set[str] = frozenset()) -> list[set[str]]:
     """The title's dash-separated parts as word sets, without bracketed text, a trailing
     "ft. ..." credit or any of `artists`' words (Loyal ... ft. Lil Wayne, Tyga; Where Are Ü Now
-    with Justin Bieber), so featured credits don't count as extra title words."""
+    with Justin Bieber), so featured credits don't count as extra title words. Words in `keep` (the
+    track's own title) stay even when an artist shares them: Jack Ü's "Where Are Ü Now"."""
     title = re.sub(r"[\(\[][^\)\]]*[\)\]]", " ", title)
-    drop = {w for a in artists for w in matcher.norm(a).split()}
+    drop = {w for a in artists for w in matcher.norm(a).split()} - set(keep)
     out = []
     for part in re.split(r"\s[-–|:]\s|\|", title):
         part = re.sub(r"(?i)\s(ft|feat|featuring)\.?\s.*$", " ", f" {part}")
@@ -150,7 +151,11 @@ def spotify_match(sp: SpotifyClient, video: Video, trusted: tuple[str, ...], mar
         if not m or m.title_hit < ADOPT_TITLE_HIT or m.confidence == "low":
             continue
         want = set(matcher.norm(matcher.core_title(track.title)).split())
-        coverage = max((len(seg & want) / len(seg) for seg in _segments(video.title, track.artists)), default=0.0)
+        tt, vt = matcher.norm(track.title), matcher.norm(video.title)
+        if matcher._marked(tt, matcher.LIVE_MARKERS) and not matcher._marked(vt, matcher.LIVE_MARKERS):
+            continue  # a live recording isn't the studio video's song (Where Are Ü Now LIVE)
+        coverage = max((len(seg & want) / len(seg) for seg in _segments(video.title, track.artists, want)),
+                       default=0.0)
         if coverage < 0.6:
             continue
         key = (coverage, matcher.rank(m))
