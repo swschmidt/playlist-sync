@@ -24,6 +24,16 @@ class PlaylistConfig:
 
 
 @dataclass(frozen=True)
+class TidyConfig:
+    """A Spotify playlist that is only cleaned up, never synced (an app's feed, like Shazam's)."""
+    name: str
+    spotify_id: str
+    dedupe: bool = True       # each song once; the earliest copy stays
+    drop_owned: bool = False  # remove songs already in another playlist you own
+    max_remove: int = 25      # a run that would remove more stops; `playlist-sync tidy --force` applies it
+
+
+@dataclass(frozen=True)
 class Config:
     home: Path
     playlists: list[PlaylistConfig]
@@ -31,6 +41,7 @@ class Config:
     trusted_channels: tuple[str, ...] = ()
     region: str = "US"
     daily_budget: int = 9000
+    tidy: list[TidyConfig] = field(default_factory=list)
 
     @property
     def state_dir(self) -> Path:
@@ -87,6 +98,14 @@ def load(home: Path | None = None) -> Config:
         except KeyError as missing:
             raise ConfigError(f"playlist entry is missing {missing}") from None
 
+    tidy = []
+    for entry in raw.get("tidy", []):
+        try:
+            tidy.append(TidyConfig(entry["name"], entry["spotify_id"], bool(entry.get("dedupe", True)),
+                                   bool(entry.get("drop_owned", False)), int(entry.get("max_remove", 25))))
+        except KeyError as missing:
+            raise ConfigError(f"tidy entry is missing {missing}") from None
+
     return Config(
         home=home,
         playlists=playlists,
@@ -94,4 +113,5 @@ def load(home: Path | None = None) -> Config:
         trusted_channels=tuple(raw.get("trusted_channels", ())),
         region=raw.get("region", "US"),
         daily_budget=int(raw.get("daily_budget", 9000)),
+        tidy=tidy,
     )

@@ -6,7 +6,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from . import config, spotify, youtube
+from . import config, spotify, tidy, youtube
 from .config import ConfigError
 from .quota import Quota
 from .sync import JsonStore, MatchCache, Report, sync_playlist
@@ -102,7 +102,9 @@ def cmd_run(args) -> int:
         cache = MatchCache(cfg.state_dir / "matches.json")
         state = JsonStore(cfg.state_dir / "state.json")
 
-        reports, failed = [], False
+        failed = _run_tidy(cfg, sp, args.dry_run, force=False) if not args.only else False
+
+        reports = []
         chosen = [pc for pc in cfg.playlists if not args.only or pc.name == args.only]
         # Live playlists first so their daily writes aren't starved; while any playlist is held or
         # hasn't finished its first sync, spare quota goes to its matching rather than to upgrade
@@ -129,6 +131,31 @@ def cmd_run(args) -> int:
         if log:
             sys.stdout = sys.__stdout__
             log.close()
+
+
+def _run_tidy(cfg, sp, dry_run: bool, force: bool) -> bool:
+    """Clean up every [[tidy]] playlist; True when one failed."""
+    failed, owned = False, None
+    for tc in cfg.tidy:
+        try:
+            if tc.drop_owned and owned is None:
+                owned = tidy.owned_songs(sp, tc.spotify_id)
+            rep = tidy.tidy_playlist(tc, sp, cfg.state_dir, dry_run, force, owned)
+        except spotify.SpotifyError as e:
+            rep = tidy.TidyReport(tc.name, errors=[str(e)])
+        failed |= bool(rep.errors or rep.stopped)
+        tidy.print_report(rep)
+    return failed
+
+
+def cmd_tidy(args) -> int:
+    cfg = config.load()
+    if not cfg.tidy:
+        print("no [[tidy]] playlists in config.toml")
+        return 0
+    sp = spotify.SpotifyClient(config.env("PLAYLIST_SYNC_SPOTIFY_CLIENT_ID"))
+    print(f"playlist-sync tidy{' (dry run)' if args.dry_run else ''} {datetime.now():%Y-%m-%d %H:%M}")
+    return 1 if _run_tidy(cfg, sp, args.dry_run, args.force) else 0
 
 
 def cmd_status(args) -> int:
@@ -158,22 +185,25 @@ def main(argv: list[str] | None = None) -> int:
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(encoding="utf-8", errors="replace")
-    parser = argparse.ArgumentParser(prog="playlist-sync", description="One-way Spotify to YouTube playlist sync.")
+    parser = argparse.ArgumentParser(prog="playlist-sync", description="Two-way Spotify and YouTube playlist sync, plus Spotify playlist cleanup.")
     sub = parser.add_subparsers(dest="cmd", required=True)
     auth = sub.add_parser("auth", help="sign in and store a refresh token")
     auth.add_argument("service", choices=["spotify", "youtube"])
     sub.add_parser("playlists", help="list your Spotify playlists with their IDs")
     sub.add_parser("youtube-playlists", help="list your YouTube playlists with their IDs")
     run = sub.add_parser("run", help="sync the playlists in config.toml")
-    run.add_argument("--dry-run", action="store_true", help="match and plan, but write nothing to YouTube")
+    run.add_argument("--dry-run", action="store_true", help="match and plan, but write nothing to Spotify or YouTube")
     run.add_argument("--only", metavar="NAME", help="sync one playlist by its config name")
     run.add_argument("--log", action="store_true", help="also append output to .state/logs/<date>.log")
+    td = sub.add_parser("tidy", help="clean up the [[tidy]] playlists (run also does this first)")
+    td.add_argument("--dry-run", action="store_true", help="show what would be removed")
+    td.add_argument("--force", action="store_true", help="apply even past max_remove")
     sub.add_parser("status", help="quota, cache and playlist mapping")
     sub.add_parser("review", help="tracks that need a manual pick")
     args = parser.parse_args(argv)
 
     handlers = {"auth": cmd_auth, "playlists": cmd_playlists, "youtube-playlists": cmd_youtube_playlists,
-                "run": cmd_run, "status": cmd_status, "review": cmd_review}
+                "run": cmd_run, "tidy": cmd_tidy, "status": cmd_status, "review": cmd_review}
     try:
         return handlers[args.cmd](args)
     except (ConfigError, spotify.SpotifyError, youtube.YouTubeError) as e:

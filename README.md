@@ -53,7 +53,9 @@ Requires [uv](https://docs.astral.sh/uv/).
 
 ```
 uv run playlist-sync run --dry-run   # match and show the planned changes; writes nothing to Spotify or YouTube
-uv run playlist-sync run             # sync
+uv run playlist-sync run             # tidy, then sync
+uv run playlist-sync tidy --dry-run  # show what the cleanup would remove
+uv run playlist-sync tidy --force    # apply a cleanup larger than max_remove
 uv run playlist-sync review          # tracks that need a manual pick
 uv run playlist-sync status          # quota used today, cache, playlist mapping
 ```
@@ -76,6 +78,17 @@ Register-ScheduledTask -TaskName 'playlist-sync' -Action $action -Trigger $trigg
 
 **Hold a new playlist** with `hold = true` until you've read its plan. Scheduled runs then only match and dry-run it, and print what they would change; live playlists run first so their daily writes aren't starved, and upgrade searches pause while anything is held or hasn't finished its first sync. Set `hold = false` once the plan looks right.
 
+## Cleanup-only playlists
+
+A `[[tidy]]` entry cleans up a Spotify playlist that an app keeps appending to, such as Shazam's **My Shazam Tracks**, which adds every Shazam again, repeats included. It is never synced to YouTube. `run` tidies first, so the daily task keeps it clean.
+
+- `dedupe = true`: each song stays once, the earliest copy.
+- `drop_owned = true`: a song that is already in another playlist you own is removed.
+- The same song is the same track ID, or the same full title and lead artist. A remix or other version with a different title counts as a different song.
+- Spotify's remove call ignores positions and takes out every copy of a track. A repeated track is therefore removed and its earliest copy re-added in its old place, and its "added" date becomes the day of the cleanup.
+- Every cleanup first writes a snapshot of the whole playlist (positions and dates) to `.state/tidy/`.
+- A run that would remove more than `max_remove` (default 25) stops and says so. Check `tidy --dry-run`, then apply it with `tidy --force`.
+
 ## Files
 
 | Path | Tracked | Contents |
@@ -85,10 +98,11 @@ Register-ScheduledTask -TaskName 'playlist-sync' -Action $action -Trigger $trigg
 | `.state/state.json` | no | playlists created by the tool; track → video pairs from the last complete run |
 | `.state/quota.json` | no | units spent today (Pacific) |
 | `.state/review.md` | no | the latest review list |
+| `.state/tidy/` | no | a snapshot of each tidied playlist, taken before every cleanup |
 
 ## Privacy
 
-playlist-sync runs on your own machine and has no server. It reads and edits the Spotify playlists you list and the matching YouTube playlists on your account. Nothing is sent anywhere else. OAuth refresh tokens are kept in your operating system's credential store, and match results stay in the local `.state/` folder. Revoke access at any time from your [Google account permissions](https://myaccount.google.com/permissions) and [Spotify apps](https://www.spotify.com/account/apps/) pages.
+playlist-sync runs on your own machine and has no server. It reads your Spotify playlists, and edits the ones you list plus the matching YouTube playlists on your account. Nothing is sent anywhere else. OAuth refresh tokens are kept in your operating system's credential store, and match results stay in the local `.state/` folder. Revoke access at any time from your [Google account permissions](https://myaccount.google.com/permissions) and [Spotify apps](https://www.spotify.com/account/apps/) pages.
 
 ## License
 
