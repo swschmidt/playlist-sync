@@ -22,7 +22,18 @@ AUTH_URL = "https://accounts.spotify.com/authorize"
 TOKEN_URL = "https://accounts.spotify.com/api/token"
 API = "https://api.spotify.com/v1"
 REDIRECT_URI = "http://127.0.0.1:8888/callback"
-SCOPES = "playlist-read-private playlist-read-collaborative playlist-modify-private playlist-modify-public"
+# Playlists, plus what a playlist tool may reasonably need next (Steven, 2026-11-18):
+#   user-library-read/modify  Liked Songs: review against playlists, unlike or like
+#   user-read-private         account country, so search can use market=from_token
+#   user-read-recently-played, user-top-read  listening history and top tracks, to seed playlists
+#   user-follow-read          followed artists
+#   ugc-image-upload          playlist cover images
+# Not requested: playback control/state and email; nothing here needs them.
+SCOPES = " ".join((
+    "playlist-read-private", "playlist-read-collaborative", "playlist-modify-private", "playlist-modify-public",
+    "user-library-read", "user-library-modify", "user-read-private", "user-read-recently-played",
+    "user-top-read", "user-follow-read", "ugc-image-upload",
+))
 TOKEN_NAME = "spotify_refresh_token"
 
 
@@ -202,7 +213,8 @@ class SpotifyClient:
     def search_tracks(self, query: str, market: str = "US", limit: int = 10) -> list[Track]:
         """Track search. Development-mode apps get at most 10 results.
 
-        An explicit market: `from_token` needs the user-read-private scope, which this tool doesn't ask for.
+        An explicit market, the configured region: tokens issued before 2026-11-18 lack user-read-private,
+        which `from_token` needs.
         """
         body = self.get("/search", {"q": query, "type": "track", "limit": limit, "market": market})
         return [t for obj in (body.get("tracks") or {}).get("items", []) if (t := parse_track(obj))]

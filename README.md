@@ -103,7 +103,7 @@ A `[[tidy]]` entry cleans up a Spotify playlist that an app keeps appending to, 
 
 ## Privacy
 
-playlist-sync runs on your own machine and has no server. It reads your Spotify playlists, and edits the ones you list plus the matching YouTube playlists on your account. Nothing is sent anywhere else. OAuth refresh tokens are kept in your operating system's credential store, and match results stay in the local `.state/` folder. Revoke access at any time from your [Google account permissions](https://myaccount.google.com/permissions) and [Spotify apps](https://www.spotify.com/account/apps/) pages.
+playlist-sync runs on your own machine and has no server. It reads your Spotify playlists, and edits the ones you list plus the matching YouTube playlists on your account. The Spotify sign-in also grants Liked Songs, listening history, top tracks, followed artists and playlist covers (see `SCOPES` in `spotify.py`) for reviews you run yourself; the sync and tidy don't use them. After a scope change, run `playlist-sync auth spotify` again. Nothing is sent anywhere else. OAuth refresh tokens are kept in your operating system's credential store, and match results stay in the local `.state/` folder. Revoke access at any time from your [Google account permissions](https://myaccount.google.com/permissions) and [Spotify apps](https://www.spotify.com/account/apps/) pages.
 
 ## License
 
