@@ -73,3 +73,19 @@ def test_missing_log_and_a_run_that_died():
 
 def test_only_the_last_run_counts():
     assert findings(HELD_READY + "\n" + CLEAN, "2026-11-18") == []
+
+
+def test_youtube_errors_are_one_line_with_a_hint():
+    import json as _json
+
+    from playlist_sync.youtube import _error_text
+
+    class R:
+        text = _json.dumps({"error": {"code": 400, "message": "Playlist sort type need to be MANUAL to support position.",
+                                     "errors": [{"reason": "manualSortRequired"}]}})
+
+        def json(self):
+            return _json.loads(self.text)
+
+    line = _error_text(R())
+    assert "\n" not in line and "(manualSortRequired)" in line and "Manual in YouTube" in line

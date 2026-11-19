@@ -101,6 +101,20 @@ def _reason(response) -> str | None:
     return errors[0].get("reason") if errors else None
 
 
+HINTS = {"manualSortRequired": "set the playlist's ordering to Manual in YouTube (playlist settings), then re-run"}
+
+
+def _error_text(response) -> str:
+    """One line: Google's message and reason, plus a fix when we know one."""
+    try:
+        err = response.json().get("error", {})
+    except ValueError:
+        return " ".join(response.text[:300].split())
+    reason = _reason(response)
+    text = f"{err.get('message', '').strip()} ({reason})" if reason else err.get("message", "").strip()
+    return f"{text}: {HINTS[reason]}" if reason in HINTS else text
+
+
 class YouTubeClient:
     def __init__(self, creds: Credentials, quota: Quota, region: str = "US"):
         self.session = AuthorizedSession(creds)
@@ -118,7 +132,7 @@ class YouTubeClient:
             self.quota.exhaust()
             raise QuotaExhausted("YouTube reports the daily quota is used up")
         if not r.ok:
-            raise YouTubeError(f"{method} {resource}: {r.status_code} {r.text[:300]}")
+            raise YouTubeError(f"{method} {resource}: {r.status_code} {_error_text(r)}")
         return r.json() if r.content else {}
 
     def search(self, query: str, results: int = 10) -> list[str]:
