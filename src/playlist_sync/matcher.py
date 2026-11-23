@@ -48,6 +48,40 @@ CLASS_TIER = {5: "video", 4: "video", 3: "lyric", 2: "live", 1: "audio", 0: "upl
 
 _BRACKETS = re.compile(r"[\(\[][^\)\]]*[\)\]]")
 _SUFFIX = re.compile(r"\s+-\s+.*$")  # " - 2004 Remaster", " - Single Version", " - Live"
+# Words a video title may carry beside the song's own title and artists.
+TITLE_NOISE = {"official", "music", "video", "audio", "lyric", "lyrics", "visualizer", "version", "hd", "hq",
+               "4k", "remaster", "remastered", "explicit", "clean", "clip", "mv", "feat", "ft", "featuring"}
+MIN_TITLE_FIT = 0.6  # "You Belong With Me" is half of ME!'s words with "with" as noise
+
+
+def title_fit(track: Track, video_title: str) -> float:
+    """How much of the video's title part is this song, rather than a longer title that contains it.
+
+    Coverage alone lets a one-word title ride inside another song: "ME!" is all there in
+    "Look What You Made Me Do" (TayTay, 2026-11-23). The best part of the video title that
+    holds a title word must be mostly words of the track's title, its artists or upload noise,
+    or start with the song's title ("Tennessee Whiskey / Drink You Away", "Confessions, Pt. II").
+    """
+    order = norm(core_title(track.title)).split()
+    want = set(order)
+    artist_words = {w for a in track.artists for w in norm(a).split()}
+    allowed = set(norm(track.title).split()) | artist_words | TITLE_NOISE
+    title = _BRACKETS.sub(" ", video_title)
+    best = 0.0
+    for part in re.split(r"\s[-–—|:~]\s|\|", title):
+        part = re.sub(r"(?i)\s(ft|feat|featuring)\.?\s.*$", " ", f" {part}")
+        words = norm(part).split()
+        if not (words and want & set(words)):
+            continue
+        lead = 0
+        while lead < len(words) and words[lead] in (artist_words | TITLE_NOISE) - want:
+            lead += 1
+        if order and words[lead:lead + len(order)] == order:
+            return 1.0
+        # A year on an old upload ("Set A Drift On Memory Bliss 1991") is noise too.
+        best = max(best, sum(w in allowed or re.fullmatch(r"(19|20)\d\d", w) is not None
+                             for w in words) / len(words))
+    return best
 
 
 @dataclass(frozen=True)
@@ -142,7 +176,7 @@ def score(track: Track, video: Video, trusted: tuple[str, ...] = ()) -> Match | 
     label = ch_ns.endswith(RECORD_LABEL) or (has(vt, "official") and ch_ns.endswith(LABEL_SUFFIXES))
     official = is_official(video.channel_title, track.artists, trusted) or (
         named and (ch_ns.endswith("vevo") or label))
-    if hit < 0.6 or not (official or named):
+    if hit < 0.6 or not (official or named) or title_fit(track, video.title) < MIN_TITLE_FIT:
         return None
     if any(has(vt, o) != has(tt, o) for o in OTHER_RECORDING if has(vt, o) or o == "remix"):
         return None

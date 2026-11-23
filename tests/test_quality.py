@@ -165,3 +165,34 @@ def test_a_title_word_shared_with_an_artist_name_still_counts():
     segs = _segments('Skrillex and Diplo - "Where Are Ü Now" with Justin Bieber (Official Video)',
                      ("Jack Ü", "Skrillex", "Diplo", "Justin Bieber"), {"where", "are", "u", "now"})
     assert {"where", "are", "u", "now", "with"} in segs
+
+
+def test_a_short_title_does_not_match_a_longer_song_that_contains_it():
+    # TayTay, 2026-11-23: Spotify's "ME!" adopted the "Look What You Made Me Do" video.
+    me = Track("me", "ME! (feat. Brendon Urie of Panic! At The Disco)", ("Taylor Swift", "Brendon Urie"), 193000)
+    assert score(me, v("a", "Taylor Swift - Look What You Made Me Do", "Taylor Swift", 255)) is None
+    real = v("b", "Taylor Swift - ME! (feat. Brendon Urie of Panic! At The Disco) ft. Brendon Urie", "Taylor Swift", 200)
+    assert score(me, real) is not None
+    assert adopt(me, [v("a", "Taylor Swift - Look What You Made Me Do", "Taylor Swift", 255), real], ()).video_id == "b"
+    assert score(t("Bad Blood", "Taylor Swift"), v("c", "Taylor Swift - Bad Blood ft. Kendrick Lamar", "Taylor Swift")) is not None
+    assert score(t("...Ready For It?", "Taylor Swift"), v("d", "Taylor Swift - …Ready For It?", "Taylor Swift")) is not None
+
+
+def test_a_title_that_starts_with_the_song_still_matches():
+    # Dirt Road and P.W., 2026-11-23: a medley and a Pt. II keep their hand-picked videos.
+    whiskey = t("Tennessee Whiskey", "Chris Stapleton", 293)
+    assert score(whiskey, v("a", "Chris Stapleton, Justin Timberlake - Tennessee Whiskey / Drink You Away | CMA Awards 2015",
+                            "Chris Stapleton", 400)) is not None
+    indiana = t("Indiana", "Clayton Anderson")
+    assert score(indiana, v("b", "Go all IN for Indiana. Donate by visiting inforindiana.com #indiana #iu",
+                            "Clayton Anderson", 30)) is None
+
+
+def test_me_does_not_take_you_belong_with_me():
+    me = Track("me", "ME! (feat. Brendon Urie of Panic! At The Disco)", ("Taylor Swift", "Brendon Urie"), 193000)
+    assert score(me, v("a", "Taylor Swift - You Belong With Me", "Taylor Swift", 230)) is None
+
+
+def test_a_year_in_an_old_upload_title_is_noise():
+    bliss = t("Set Adrift On Memory Bliss", "P.M. Dawn", 250)
+    assert score(bliss, v("a", "PM Dawn - Set A Drift On Memory Bliss 1991", "GeeStreetRecordings", 250)) is not None
